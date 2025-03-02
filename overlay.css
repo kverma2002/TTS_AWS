@@ -1,0 +1,111 @@
+/* 
+  Single-line, compact TTS overlay:
+  - No title
+  - A single row with spinner, play/pause, progress, time
+  - A small close button in the corner
+*/
+
+.tts-overlay-player {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    /* A slim, single-line row */
+    display: none;          /* We'll show it when TTS triggers */
+    align-items: center;
+    gap: 6px;
+    width: auto;            /* Sizing around content */
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+    padding: 10px 12px;
+    z-index: 999999;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  
+  /* Close button in top-right corner, absolute */
+  .tts-close-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: none;
+    border: none;
+    font-size: 16px;
+    color: #aaa;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+  .tts-close-btn:hover {
+    color: #666;
+  }
+  
+  /* Spinner for loading */
+  .tts-spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    border-left-color: #3498db;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-right: 4px;
+  }
+  
+  @keyframes spin {
+    0%   { transform: rotate(0deg);   }
+    100% { transform: rotate(360deg); }
+  }
+  
+  /* Play/Pause button: smaller and simpler */
+  .tts-play-pause-btn {
+    display: none; /* hidden until audio is ready */
+    background: #3498db;
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 6px;
+    transition: background-color 0.2s;
+  }
+  .tts-play-pause-btn:hover {
+    background-color: #2980b9;
+  }
+  
+  /* Progress bar: single line */
+  .tts-progress-bar {
+    display: none; /* hidden until audio is ready */
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    border-radius: 3px;
+    background: #ddd;
+    outline: none;
+    width: 120px; /* short bar for single line */
+    cursor: pointer;
+    margin: 0 4px;
+  }
+  .tts-progress-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #3498db;
+    cursor: pointer;
+  }
+  .tts-progress-bar::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #3498db;
+    cursor: pointer;
+  }
+  
+  /* Time display: e.g. "0:00 / 0:25" */
+  .tts-time-display {
+    display: none; /* hidden until audio is ready */
+    font-size: 12px;
+    color: #444;
+    min-width: 60px; /* ensure consistent space */
+    text-align: right;
+  }
+  
