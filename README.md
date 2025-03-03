@@ -1,203 +1,140 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 3.0"
-    }
-  }
-}
+# AWS TTS – Highlight & Speak Chrome Extension
 
-provider "aws" {
-  region = "us-east-1"
-}
+A Chrome extension that allows users to highlight text on any webpage, right-click, and have it read aloud using AWS Polly text-to-speech service. The extension includes user authentication via AWS Cognito and configurable TTS settings.
 
-##########################
-# IAM Role & Policies
-##########################
+## Demo
+https://www.loom.com/share/1d6dc499ae9d440ab14b1ccea71ab4ca?sid=71c3ed66-42f7-4e14-b882-b0c71b6f222d
 
-resource "aws_iam_role" "lambda_exec" {
-  name = "lambda_exec_role"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [{
-      Action    = "sts:AssumeRole",
-      Effect    = "Allow",
-      Principal = { Service = "lambda.amazonaws.com" }
-    }]
-  })
-}
+## Features
 
-resource "aws_iam_role_policy_attachment" "lambda_basic" {
-  role       = aws_iam_role.lambda_exec.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
+- User authentication with AWS Cognito
+- Customizable Text-to-Speech settings:
+  - Voice selection
+  - Engine type (Standard, Neural, Generative)
+  - Speech speed control
+- Highlight text on any webpage and have it read aloud
+- Overlay audio player with playback controls
+- Secure token management with automatic refresh
 
-resource "aws_iam_policy" "polly_synthesize_policy" {
-  name        = "lambda_polly_synthesize_policy"
-  description = "Allow only polly:SynthesizeSpeech action"
-  policy = jsonencode({
-    Version   = "2012-10-17",
-    Statement = [
-      {
-        Effect   = "Allow",
-        Action   = "polly:SynthesizeSpeech",
-        Resource = "*"
-      }
-    ]
-  })
-}
+## Architecture
 
-resource "aws_iam_role_policy_attachment" "polly_access" {
-  role       = aws_iam_role.lambda_exec.name
-  policy_arn = aws_iam_policy.polly_synthesize_policy.arn
-}
+### Components
 
-##########################
-# Lambda Function
-##########################
+1. **Popup Interface**: Configuration UI for authentication and TTS settings
+2. **Background Service Worker**: Handles context menu setup and messaging
+3. **Content Script**: Injects audio player and handles TTS requests
+4. **Authentication Module**: Manages Cognito authentication flow
+5. **AWS Backend** (in terraform file):
+   - API Gateway endpoint for TTS requests
+   - Lambda function to process requests and call AWS Polly
+   - Cognito User Pool for authentication
 
-resource "aws_lambda_function" "my_lambda" {
-  function_name = "polly_synthesizer"
-  runtime       = "python3.8"
-  handler       = "index.lambda_handler"
-  role          = aws_iam_role.lambda_exec.arn
+### Data Flow
 
-  # Inline Lambda code (uses the filename "index.py")
-  zip_file = <<EOF
-import json
-import boto3
-import base64
+1. User authenticates via Cognito in the popup
+2. Authentication tokens are stored securely in Chrome storage
+3. User configures TTS settings (voice, engine, speed)
+4. When text is highlighted and the context menu option is clicked:
+   - Background script sends the selected text to the content script
+   - Content script verifies authentication and retrieves settings
+   - Content script sends authenticated request to API Gateway
+   - Audio is returned and played in an overlay player
 
-def lambda_handler(event, context):
-    try:
-        data = json.loads(event['body'])
-    except Exception as e:
-        return {
-            "statusCode": 400,
-            "body": json.dumps({"error": "Invalid JSON input."})
-        }
-    
-    text = data.get('text', '')
-    if not text:
-        return {
-            "statusCode": 400,
-            "body": json.dumps({"error": "No text provided"})
-        }
-        
-    voice = data.get('voice', 'Joanna')
-    engine = data.get('engine', 'standard')
-    
-    polly = boto3.client('polly')
-    
-    try:
-        response = polly.synthesize_speech(
-            Text=text,
-            OutputFormat='mp3',
-            VoiceId=voice,
-            Engine=engine
-        )
-    except Exception as e:
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": str(e)})
-        }
-    
-    audio_stream = response.get('AudioStream')
-    if audio_stream:
-        audio_bytes = audio_stream.read()
-        encoded_audio = base64.b64encode(audio_bytes).decode('utf-8')
-        return {
-            "statusCode": 200,
-            "body": encoded_audio,
-            "isBase64Encoded": True
-        }
-    else:
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": "Audio stream not available from Polly"})
-        }
-EOF
-}
+## Design 
 
-##########################
-# Cognito User Pool & Client
-##########################
+### Security
+- **Cognito Authentication**: Without an authorizer, anyone could call and use you AWS account's resources. Adding a Cognito User Pool Authorizer provides the user management and JWT token for authorization. By turning off user sign up, you can create a user for yourself to ensure a secure API.
 
-resource "aws_cognito_user_pool" "user_pool" {
-  name = "api_user_pool"
-}
+### User Experience
+- **Minimalist Overlay Player**: The audio player was designed to be non-intrusive, appearing only when needed and providing just the essential controls to avoid distracting from the browsing experience.
+- **Context Menu Integration**: Using right-click for activation feels natural and integrates with existing browser patterns, requiring minimal learning curve.
 
-resource "aws_cognito_user_pool_client" "user_pool_client" {
-  name         = "api_user_pool_client"
-  user_pool_id = aws_cognito_user_pool.user_pool.id
+### AWS Integration Choices
+- **Cognito for Authentication**: Provides ecurity without having to build a custom auth system.
+- **Polly for TTS**: Offers high-quality voices and multiple engine options 
+- **API Gateway + Lambda**: Serverless architecture ensures scalability and cost-effectiveness
 
-  explicit_auth_flows = [
-    "ALLOW_USER_PASSWORD_AUTH"
-  ]
-}
+## Setup Instructions
 
-##########################
-# API Gateway HTTP API
-##########################
+### Prerequisites
 
-resource "aws_apigatewayv2_api" "http_api" {
-  name          = "http-api"
-  protocol_type = "HTTP"
+- Node.js and npm
+- AWS Account with:
+  - Cognito User Pool
+  - API Gateway
+  - Lambda Function with Polly permissions
 
-  cors_configuration {
-    allow_origins  = ["*"]
-    allow_methods  = ["POST"]
-    allow_headers  = ["authorization", "content-type"]
-    expose_headers = ["content-length"]
-  }
-}
+### Installation
 
-##########################
-# API Integration & Route
-##########################
+1. Clone the repository:
+   ```
+   git clone https://github.com/yourusername/aws-tts-extension.git
+   cd aws-tts-extension
+   ```
 
-resource "aws_apigatewayv2_integration" "lambda_integration" {
-  api_id                 = aws_apigatewayv2_api.http_api.id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.my_lambda.invoke_arn
-  payload_format_version = "2.0"
-}
+2. Install dependencies:
+   ```
+   npm install
+   ```
 
-resource "aws_apigatewayv2_authorizer" "cognito_auth" {
-  api_id           = aws_apigatewayv2_api.http_api.id
-  name             = "cognito-authorizer"
-  authorizer_type  = "JWT"
-  identity_sources = ["$request.header.Authorization"]
+3. Configure AWS Cognito settings:
+   - Open `auth.js` and replace the placeholder values in `COGNITO_CONFIG`:
+     ```javascript
+     const COGNITO_CONFIG = {
+       clientId: "YOUR_CLIENT_ID",
+       userPoolId: "YOUR_USER_POOL_ID",
+       region: "YOUR_REGION",
+       endpoint: "YOUR_COGNITO_ENDPOINT"
+     };
+     ```
 
-  jwt_configuration {
-    audience = [aws_cognito_user_pool_client.user_pool_client.id]
-    issuer   = "https://cognito-idp.us-east-1.amazonaws.com/${aws_cognito_user_pool.user_pool.id}"
-  }
-}
+4. Configure API endpoint:
+   - Open `content.js` and replace the placeholder API URL:
+     ```javascript
+     const API_URL = "YOUR_API_GATEWAY_URL";
+     ```
 
-resource "aws_apigatewayv2_route" "post_route" {
-  api_id    = aws_apigatewayv2_api.http_api.id
-  route_key = "POST /"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+5. Build the extension:
+   ```
+   npx webpack
+   ```
 
-  authorization_type = "JWT"
-  authorizer_id      = aws_apigatewayv2_authorizer.cognito_auth.id
-}
+6. Load the extension in Chrome:
+   - Open Chrome and navigate to `chrome://extensions/`
+   - Enable "Developer mode"
+   - Click "Load unpacked" and select the extension directory
 
-resource "aws_apigatewayv2_stage" "default_stage" {
-  api_id      = aws_apigatewayv2_api.http_api.id
-  name        = "$default"
-  auto_deploy = true
-}
+### AWS Backend Setup
 
-##########################
-# Lambda Permission for API Gateway
-##########################
+1. Create a Cognito User Pool:
+   - Enable app client with USER_PASSWORD_AUTH flow
+   - Configure app client settings with appropriate permissions
 
-resource "aws_lambda_permission" "apigw_lambda" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.my_lambda.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
-}
+2. Create an API Gateway endpoint:
+   - Set up a POST method with Lambda proxy integration
+   - Enable CORS and authorization via Cognito User Pool
+
+3. Create a Lambda function:
+   - Set up IAM role with Polly permissions
+   - Implement the TTS functionality using AWS SDK
+   - Use the code in 
+
+## Potential Improvements
+
+### Functionality Enhancements
+- Add support for different languages
+- Implement text highlighting during playback
+- Add voice customization options (pitch, emphasis)
+- Support for reading entire articles or pages
+- Offline caching of frequently used audio
+
+### Technical Improvements
+- Migrate to TypeScript for better type safety
+- Implement unit and integration tests
+- Add error handling and retry mechanisms
+- Optimize audio streaming for performance
+- Implement progressive audio loading for long texts
+
+### UI Enhancements
+- Add themes (light/dark mode)
+- Implement keyboard shortcuts
